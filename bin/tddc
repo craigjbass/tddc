@@ -1,0 +1,31 @@
+#!/bin/env ruby
+reader, writer = IO.pipe
+
+command = "#{ARGV[0]} #{ARGV[1]}"
+cmd_pid = Process.spawn(command, out: writer.fileno)
+writer.close
+
+trap(:INT) do
+  Process.kill('SIGQUIT', cmd_pid)
+  Process.detach(cmd_pid)
+  reader.close
+  exit(0)
+end
+
+
+def alive?(pid)
+  Process.kill(0, pid)
+  true
+rescue Errno::ESRCH
+  false
+end
+
+until !alive?(cmd_pid) || reader.eof?
+  begin
+    print reader.read_nonblock(1)
+    STDOUT.flush
+  rescue IO::WaitReadable
+    IO.select([reader])
+    retry
+  end
+end
